@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Employee {
+  id          String       @id
+  name        String
+  department  String
+  riskLevel   String
+  suggestions Suggestion[]
+}
+
+model Suggestion {
+  id            String    @id
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id])
+  type          String
+  description   String
+  status        String
+  priority      String
+  source        String
+  createdBy     String?
+  dateCreated   DateTime
+  dateUpdated   DateTime
+  dateCompleted DateTime?
+  notes         String    @default("")
+}
