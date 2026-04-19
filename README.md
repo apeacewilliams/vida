@@ -21,9 +21,8 @@ Open [http://localhost:3000](http://localhost:3000). Seed data is already commit
 ## Assumptions
 
 - **No authentication** — intentionally omitted per the brief; a real deployment would add session-based auth before exposing this to users
-- **Two slices in scope** — viewing suggestions and updating their status; suggestion creation is not implemented
 - **Risk level is read-only** — seeded per employee and not editable through this interface
-- **"Overdue" is manually assigned** — automated deadline-based status transitions are out of scope
+- **"Overdue" is manually assigned** — automated deadline-based status transitions as deadlines are not part the sample data
 
 ## Architecture
 

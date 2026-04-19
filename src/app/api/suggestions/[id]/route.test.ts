@@ -25,6 +25,10 @@ function makeRequest(body: object) {
   });
 }
 
+function mockExisting(status: string, dateCompleted: Date | null = null) {
+  mockFindUnique.mockResolvedValue({ status, dateCompleted } as never);
+}
+
 const params = Promise.resolve({ id: "s1" });
 
 beforeEach(() => {
@@ -46,54 +50,58 @@ describe("PATCH /api/suggestions/[id]", () => {
 
   describe("dateCompleted handling", () => {
     it("sets dateCompleted to now on first transition to completed", async () => {
-      mockFindUnique.mockResolvedValue({
-        status: "pending",
-        dateCompleted: null,
-      } as never);
+      mockExisting("pending");
       await PATCH(makeRequest({ status: "completed" }), { params });
-      expect(mockUpdate.mock.calls[0][0].data.dateCompleted).toBeInstanceOf(
-        Date,
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ dateCompleted: expect.any(Date) }),
+        }),
       );
     });
 
     it("preserves existing dateCompleted when already completed", async () => {
       const original = new Date("2024-01-01T10:00:00Z");
-      mockFindUnique.mockResolvedValue({
-        status: "completed",
-        dateCompleted: original,
-      } as never);
+      mockExisting("completed", original);
       await PATCH(makeRequest({ status: "completed" }), { params });
-      expect(mockUpdate.mock.calls[0][0].data.dateCompleted).toBe(original);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ dateCompleted: original }),
+        }),
+      );
     });
 
     it("clears dateCompleted when transitioning away from completed", async () => {
-      mockFindUnique.mockResolvedValue({
-        status: "completed",
-        dateCompleted: new Date(),
-      } as never);
+      mockExisting("completed", new Date());
       await PATCH(makeRequest({ status: "in_progress" }), { params });
-      expect(mockUpdate.mock.calls[0][0].data.dateCompleted).toBeNull();
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ dateCompleted: null }),
+        }),
+      );
     });
   });
 
   describe("notes handling", () => {
-    beforeEach(() => {
-      mockFindUnique.mockResolvedValue({
-        status: "pending",
-        dateCompleted: null,
-      } as never);
-    });
+    beforeEach(() => mockExisting("pending"));
 
     it("includes notes in the update when provided", async () => {
       await PATCH(makeRequest({ status: "pending", notes: "reviewed" }), {
         params,
       });
-      expect(mockUpdate.mock.calls[0][0].data.notes).toBe("reviewed");
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ notes: "reviewed" }),
+        }),
+      );
     });
 
     it("omits notes from the update when absent", async () => {
       await PATCH(makeRequest({ status: "pending" }), { params });
-      expect(mockUpdate.mock.calls[0][0].data).not.toHaveProperty("notes");
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.not.objectContaining({ notes: expect.anything() }),
+        }),
+      );
     });
   });
 });
