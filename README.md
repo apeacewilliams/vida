@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VIDA Suggestions Board
 
-## Getting Started
+A simple admin dashboard for viewing and managing employee MSK (musculoskeletal) suggestions, built as part of a take-home exercise.
 
-First, run the development server:
+## Running the application
 
 ```bash
+npm install
+npx prisma generate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Seed data is already committed at `prisma/dev.db` — no migration step is needed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Employee list** — sorted by risk level (high → medium → low), with per-employee suggestion counts broken down by status
+- **Employee detail** — suggestions grouped by status (Overdue → In Progress → Pending → Completed), sorted by priority within each group
+- **Inline status updates** — optimistic UI with automatic rollback on failure; rapid changes are race-safe via `AbortController`
 
-## Learn More
+## Assumptions
 
-To learn more about Next.js, take a look at the following resources:
+- **No authentication** — intentionally omitted per the brief; a real deployment would add session-based auth before exposing this to users
+- **Two slices in scope** — viewing suggestions and updating their status; suggestion creation is not implemented
+- **Risk level is read-only** — seeded per employee and not editable through this interface
+- **"Overdue" is manually assigned** — automated deadline-based status transitions are out of scope
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Stack:** Next.js 16 · React 19 · Prisma 7 (SQLite via better-sqlite3) · Tailwind v4 · Biome · Vitest
 
-## Deploy on Vercel
+### React Server Components first
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Data fetching happens directly in server components via Prisma — no client-side fetch waterfalls, no loading spinners for page data. The only client component is `SuggestionCard`, which opts into `"use client"` solely for the status selector interaction.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Type safety at DB boundaries
+
+The Prisma schema uses plain strings throughout (SQLite has no native enum type). A `createNarrower` factory in `src/lib/types.ts` generates validators that narrow raw `string` values to typed unions at every read boundary, throwing on unexpected values rather than silently propagating bad data.
+
+### Optimistic UI
+
+Status changes in `SuggestionCard` update local state immediately and revert on failure. An `AbortController` cancels in-flight requests when the user changes status again before the previous request resolves, preventing stale updates from overwriting newer ones.
+
+### Cache invalidation
+
+After a successful PATCH, `revalidatePath` marks both the home page and the relevant employee detail page as stale. The client calls `router.refresh()` to re-fetch the RSC tree, keeping the UI in sync without a full page reload.
+
+## Scripts
+
+```bash
+npm run dev       # start dev server
+npm run build     # production build
+npm run lint      # biome check
+npm run format    # biome format --write
+npm test          # vitest run
+```
