@@ -1,8 +1,8 @@
-import { Prisma } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { SUGGESTION_STATUSES } from "@/lib/types";
 import type { SuggestionStatus, UpdateSuggestionBody } from "@/lib/types";
+import { SUGGESTION_STATUSES } from "@/lib/types";
 
 const validStatuses = new Set<SuggestionStatus>(SUGGESTION_STATUSES);
 
@@ -16,11 +16,7 @@ function isValidBody(body: unknown): body is UpdateSuggestionBody {
     return false;
   }
 
-  if (
-    candidate.notes !== undefined &&
-    candidate.notes !== null &&
-    typeof candidate.notes !== "string"
-  ) {
+  if (candidate.notes !== undefined && typeof candidate.notes !== "string") {
     return false;
   }
 
@@ -29,38 +25,47 @@ function isValidBody(body: unknown): body is UpdateSuggestionBody {
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const body = await request.json().catch(() => null);
 
   if (!isValidBody(body)) {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
+  }
+
+  const existing = await prisma.suggestion.findUnique({
+    where: { id },
+    select: { status: true, dateCompleted: true },
+  });
+
+  if (!existing) {
+    return NextResponse.json(
+      { error: "Suggestion not found" },
+      { status: 404 },
+    );
   }
 
   const now = new Date();
+  const isCompleted = body.status === "completed";
+  const dateCompleted = isCompleted ? (existing.dateCompleted ?? now) : null;
 
-  try {
-    const updatedSuggestion = await prisma.suggestion.update({
-      where: { id },
-      data: {
-        status: body.status,
-        ...(body.notes !== undefined ? { notes: body.notes } : {}),
-        dateUpdated: now,
-        dateCompleted: body.status === "completed" ? now : null,
-      },
-      include: { employee: true },
-    });
+  const updatedSuggestion = await prisma.suggestion.update({
+    where: { id },
+    data: {
+      status: body.status,
+      ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      dateUpdated: now,
+      dateCompleted,
+    },
+    include: { employee: true },
+  });
 
-    return NextResponse.json(updatedSuggestion);
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return NextResponse.json({ error: "Suggestion not found" }, { status: 404 });
-    }
+  revalidatePath("/");
+  revalidatePath(`/employee/${updatedSuggestion.employeeId}`);
 
-    throw error;
-  }
+  return NextResponse.json(updatedSuggestion);
 }
